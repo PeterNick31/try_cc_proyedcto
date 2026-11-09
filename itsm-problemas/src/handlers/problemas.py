@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
 from src.common.events import publish
@@ -96,6 +96,13 @@ def _list(event, tenant_id):
     if not 1 <= limit <= 100:
         raise RequestError(400, "LIMITE_INVALIDO", "limite debe ser un entero entre 1 y 100.")
 
+    priority = query.get("prioridad")
+    if priority and priority not in {"P1", "P2", "P3", "P4"}:
+        raise RequestError(400, "PRIORIDAD_INVALIDA", "El filtro prioridad debe ser P1, P2, P3 o P4.")
+    assignee = query.get("responsable_id")
+    if assignee and not assignee.startswith(f"usr-{tenant_id}-"):
+        raise RequestError(400, "RESPONSABLE_INVALIDO", "El responsable debe pertenecer al tenant autenticado.")
+
     params = {"Limit": limit}
     if query.get("estado"):
         state = query["estado"]
@@ -110,6 +117,16 @@ def _list(event, tenant_id):
     else:
         params["KeyConditionExpression"] = Key("tenant_id").eq(tenant_id)
         params["ScanIndexForward"] = False
+    filters = []
+    if priority:
+        filters.append(Attr("prioridad").eq(priority))
+    if assignee:
+        filters.append(Attr("responsable_id").eq(assignee))
+    if filters:
+        filter_expression = filters[0]
+        for condition in filters[1:]:
+            filter_expression &= condition
+        params["FilterExpression"] = filter_expression
     if query.get("siguiente"):
         start_key = _token_decode(query["siguiente"])
         if start_key["tenant_id"] != tenant_id:
@@ -306,6 +323,8 @@ def _handle(event):
         return response(200, {"data": _get_problem(tenant_id, problem_id)})
 
     if method == "DELETE" and path == "/problemas/{id}":
+        if claims["rol"] != "ADMIN":
+            raise RequestError(403, "ROL_NO_PERMITIDO", "Se requiere rol ADMIN para eliminar problemas.")
         item = _get_problem(tenant_id, problem_id)
         if item["estado"] != "NUEVO":
             raise RequestError(409, "ESTADO_INVALIDO", "Solo se pueden eliminar problemas en estado NUEVO.")

@@ -73,21 +73,34 @@ def _resolve_problem(tenant_id, data):
     if not item:
         raise ValueError(f"No existe el problema {problem_id} del evento")
     if item["estado"] in {"RESUELTO", "CERRADO"}:
-        return problem_id, False
+        return problem_id, bool(item.get("evento_resuelto_pendiente"))
     now = _now()
     TABLE.update_item(
         Key={"tenant_id": tenant_id, "problema_id": problem_id},
-        UpdateExpression="SET #state = :resolved, estado_creado_en = :sort, actualizado_en = :now",
+        UpdateExpression=(
+            "SET #state = :resolved, estado_creado_en = :sort, "
+            "actualizado_en = :now, evento_resuelto_pendiente = :pending"
+        ),
         ExpressionAttributeNames={"#state": "estado"},
         ExpressionAttributeValues={
             ":resolved": "RESUELTO",
             ":sort": f"RESUELTO#{now}",
             ":now": now,
+            ":pending": True,
             ":old": item["estado"],
         },
         ConditionExpression="#state = :old",
     )
     return problem_id, True
+
+
+def _acknowledge_resolved_event(tenant_id, problem_id):
+    TABLE.update_item(
+        Key={"tenant_id": tenant_id, "problema_id": problem_id},
+        UpdateExpression="REMOVE evento_resuelto_pendiente",
+        ConditionExpression="evento_resuelto_pendiente = :pending",
+        ExpressionAttributeValues={":pending": True},
+    )
 
 
 def _unwrap(record):
@@ -115,9 +128,16 @@ def handler(event, _context):
             if event_name == "incidente.escalado_a_problema":
                 _problem_from_incident(tenant_id, data)
             elif event_name == "cambio.implementado":
+                if data.get("problema_id") is None:
+                    LOGGER.info(
+                        "Se ignora cambio.implementado sin problema_id: %s",
+                        record["messageId"],
+                    )
+                    continue
                 problem_id, changed = _resolve_problem(tenant_id, data)
                 if changed:
                     publish("problema.resuelto", tenant_id, {"problema_id": problem_id})
+                    _acknowledge_resolved_event(tenant_id, problem_id)
             else:
                 raise ValueError(f"Evento no soportado por q-problemas: {event_name}")
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):

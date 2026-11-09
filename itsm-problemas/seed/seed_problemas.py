@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+from datetime import datetime, timedelta, timezone
 
 import boto3
 
@@ -26,12 +27,14 @@ def seed(tenant_id, count, table_name, seed_value):
     table = boto3.resource("dynamodb").Table(table_name)
     randomizer = random.Random(seed_value)
     states = ("NUEVO", "EN_ANALISIS", "ERROR_CONOCIDO", "RESUELTO", "CERRADO")
+    today = datetime.now(timezone.utc).date()
     for batch_start in range(1, count + 1, 25):
         with table.batch_writer(overwrite_by_pkeys=["tenant_id", "problema_id"]) as writer:
             batch_end = min(batch_start + 25, count + 1)
             for number in range(batch_start, batch_end):
                 state = states[number % len(states)]
-                timestamp = f"2026-{(number % 12) + 1:02d}-{(number % 27) + 1:02d}T12:00:00Z"
+                created_date = today - timedelta(days=number % 365)
+                timestamp = f"{created_date.isoformat()}T12:00:00Z"
                 item = {
                     "tenant_id": tenant_id,
                     "problema_id": f"prb-{tenant_id}-{number:06d}",
@@ -42,7 +45,7 @@ def seed(tenant_id, count, table_name, seed_value):
                     "estado_creado_en": f"{state}#{timestamp}",
                     "causa_raiz": "Configuración inconsistente entre nodos." if state in states[2:] else None,
                     "workaround": "Reiniciar el servicio afectado." if state in states[2:] else None,
-                    "incidentes_ids": [],
+                    "incidentes_ids": [f"inc-{tenant_id}-{number:06d}"],
                     "cambio_id": None,
                     "responsable_id": f"usr-{tenant_id}-{(number % 10000) + 1:05d}",
                     "creado_en": timestamp,

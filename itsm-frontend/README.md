@@ -25,6 +25,12 @@ VITE_API_PROBLEMAS=https://.../dev
 
 Las URLs deben ser la base de la API, sin añadir `/problemas` o `/auth/login`; los servicios agregan esas rutas. El login real obtiene el JWT de `/auth/login`, y el cliente HTTP adjunta `Authorization: Bearer ...`. Una respuesta 401 cierra la sesión. No guardes secretos en variables `VITE_*`, porque se incluyen en el código público del navegador.
 
+El cliente maneja `401` cerrando la sesión y presenta los errores `403` como falta de permisos; verifica que el API incluya mensajes de error compatibles con `{"error":{"mensaje":"..."}}`.
+
+Mantén `VITE_DEMO_MODE=true` mientras el endpoint de login real no esté integrado y probado. Cámbialo a `false` en Amplify solo cuando `/auth/login` esté disponible.
+
+Para el entorno del grupo, usa las URLs de las APIs desplegadas en `dev` y `us-east-1`. El navegador se conecta a las APIs; la publicación y el consumo de SNS/SQS los realizan los microservicios, no el frontend.
+
 ## Estructura para colaborar
 
 ```text
@@ -47,3 +53,5 @@ Cada persona trabaja en `src/modules/{su_modulo}` y registra sus rutas en `src/A
 ## Despliegue en Amplify
 
 Conecta el repositorio GitHub en Amplify Hosting y usa la rama `main`. Amplify detectará `amplify.yml`, instalará dependencias con `npm ci` y publicará `dist/`. Añade `VITE_DEMO_MODE` y las URLs públicas de API en las variables de entorno de Amplify. Para usar `npm ci`, conserva y sube `package-lock.json` generado por `npm install`.
+
+En Amplify Hosting, configura una regla de reescritura para que las rutas de React funcionen al recargar la página: **Source** `/<*>`, **Target** `/index.html`, **Status** `200 (Rewrite)`. Verifica que las rutas de archivos estáticos sigan sirviéndose desde `dist/`.

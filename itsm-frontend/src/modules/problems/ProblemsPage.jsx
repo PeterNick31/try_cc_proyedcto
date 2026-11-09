@@ -9,6 +9,8 @@ export default function ProblemsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [state, setState] = useState("");
+  const [priority, setPriority] = useState("");
+  const [assignee, setAssignee] = useState("");
   const [cursor, setCursor] = useState(null);
   const [nextCursor, setNextCursor] = useState(null);
   const [cursorHistory, setCursorHistory] = useState([]);
@@ -18,14 +20,26 @@ export default function ProblemsPage() {
   const [busy, setBusy] = useState(false);
 
   async function refresh(pageCursor = cursor) {
-    const result = await listProblems({ estado: state, limite: 20, siguiente: pageCursor });
+    const result = await listProblems({
+      estado: state,
+      prioridad: priority,
+      responsable_id: assignee,
+      limite: 20,
+      siguiente: pageCursor,
+    });
     setItems(result.data);
     setNextCursor(result.paginacion?.siguiente || null);
   }
 
   useEffect(() => {
     refresh(cursor).catch((reason) => setError(apiErrorMessage(reason)));
-  }, [state, cursor]);
+  }, [state, priority, assignee, cursor]);
+
+  function resetFilters(updateFilter) {
+    updateFilter();
+    setCursor(null);
+    setCursorHistory([]);
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -64,7 +78,11 @@ export default function ProblemsPage() {
       <section className="panel">
         <div className="section-heading">
           <div><p className="eyebrow">REGISTRO</p><h2>Problemas <span className="count-pill">{items.length}</span></h2></div>
-          <label className="filter-control"><span>Estado</span><select value={state} onChange={(event) => { setState(event.target.value); setCursor(null); setCursorHistory([]); }}><option value="">Todos</option><option>NUEVO</option><option>EN_ANALISIS</option><option>ERROR_CONOCIDO</option><option>RESUELTO</option><option>CERRADO</option></select></label>
+          <div className="filter-controls">
+            <label className="filter-control"><span>Estado</span><select value={state} onChange={(event) => resetFilters(() => setState(event.target.value))}><option value="">Todos</option><option>NUEVO</option><option>EN_ANALISIS</option><option>ERROR_CONOCIDO</option><option>RESUELTO</option><option>CERRADO</option></select></label>
+            <label className="filter-control"><span>Prioridad</span><select value={priority} onChange={(event) => resetFilters(() => setPriority(event.target.value))}><option value="">Todas</option><option>P1</option><option>P2</option><option>P3</option><option>P4</option></select></label>
+            <label className="filter-control"><span>Responsable</span><input aria-label="ID del responsable" placeholder={`usr-${user.tenant_id}-…`} value={assignee} onChange={(event) => resetFilters(() => setAssignee(event.target.value.trim()))} /></label>
+          </div>
         </div>
         <ProblemRows items={items} />
         <div className="pagination">

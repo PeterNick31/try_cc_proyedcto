@@ -19,6 +19,9 @@ http.interceptors.response.use(
   (result) => result,
   (error) => {
     if (error.response?.status === 401) unauthorizedHandler?.();
+    if (error.response?.status === 403 && !error.response?.data?.error?.mensaje) {
+      error.message = "No tienes permisos para realizar esta acción.";
+    }
     return Promise.reject(error);
   },
 );
